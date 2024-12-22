@@ -1,0 +1,74 @@
+pipeline {
+    agent any 
+    
+    tools{
+        jdk 'jdk'
+        maven 'maven'
+    }
+    stages{
+        
+        stage('Git Checkout') {
+            steps {
+                echo "Starting the checkout stage"
+                git branch: 'main', url: 'https://github.com/Prerana-Mauryaa/Petclinic-for-DevSecOps-Pipeline.git'
+            }
+        }
+        
+        stage("Compile"){
+            steps{
+                sh "mvn clean compile"
+            }
+        }
+        
+         stage("Test Cases"){
+            steps{
+                sh "mvn test"
+            }
+        }
+        
+        stage('SonarQube Analysis') {
+            steps{
+                withSonarQubeEnv(installationName: 'sonar-local') {
+                  sh "mvn clean verify sonar:sonar -Dsonar.projectKey=Pet-Clinic-for-Devsecops -Dsonar.projectName='Pet-Clinic-for-Devsecops'"
+                }
+            }
+        }
+
+        stage("OWASP Dependency Check"){
+            steps{
+                dependencyCheck additionalArguments: '--scan ./ --format HTML ', odcInstallation: 'dep-check-auto'
+                dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
+            }
+        }
+        
+         stage("Build"){
+            steps{
+                sh " mvn clean install"
+            }
+        }
+        
+        stage("Docker Build & Push"){
+            steps{
+                script{
+                   withDockerRegistry(credentialsId: 'dockerhub', toolName: 'docker') {
+                        
+                        sh "docker build -t preranamauryaa/petclinic-devsecops ."
+                        sh "docker tag image1 preranamauryaa/petclinic-devsecops:latest "
+                        sh "docker push preranamauryaa/petclinic-devsecops:latest "
+                    }
+                }
+            }
+        }
+        
+        stage("TRIVY"){
+            steps{
+                sh " trivy image preranamauryaa/petclinic-devsecops:latest"
+            }
+        }
+        stage("Deploy To Tomcat"){
+            steps{
+                sh "cp  /var/lib/jenkins/workspace/devsecops/target/petclinic.war /opt/apache-tomcat-9.0.65/webapps/ "
+            }
+        }
+    }
+}
